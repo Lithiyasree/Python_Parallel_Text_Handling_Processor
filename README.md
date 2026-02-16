@@ -1,4 +1,4 @@
-# 🧠 Python Parallel Text Handling Processor
+# 📈 Python Parallel Text Handling Processor
 
 ## 📌 Project Description
 
@@ -49,7 +49,7 @@ This project demonstrates practical implementation of parallel computing and str
 
 ---
 
-## 🧠 Technologies Used
+## 📈 Technologies Used
 
 - Python 3.x
 - threading / multiprocessing

@@ -1,15 +1,31 @@
 import csv
 import sqlite3
+import re
+import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
-# ASPECT KEYWORDS
+# START TIMER
+
+
+start_time = time.time()
+
+# TEXT PREPROCESSING USING REGEX
+
+
+def preprocess_text(text):
+    words = re.findall(r"\b\w+\b", text.lower())
+    return words
+
+# WORD-BASED RULE DICTIONARIES
+
 
 quality_keywords = {
-    "good quality": 2,
+    "good": 1,
     "excellent": 2,
     "durable": 2,
-    "cheap quality": -2,
-    "poor quality": -2
+    "cheap": -1,
+    "poor": -2
 }
 
 price_keywords = {
@@ -20,26 +36,93 @@ price_keywords = {
 }
 
 delivery_keywords = {
-    "fast delivery": 2,
-    "on time": 2,
+    "fast": 1,
+    "ontime": 2,
     "late": -1,
     "delayed": -2
 }
 
 packaging_keywords = {
-    "well packed": 2,
+    "packed": 1,
     "damaged": -2,
     "broken": -2
 }
 
 performance_keywords = {
-    "works perfectly": 2,
+    "perfectly": 2,
     "smooth": 2,
     "slow": -1,
-    "not working": -2
+    "working": 1
 }
 
+
+# SCORE CALCULATION FUNCTION
+
+
+def calculate_score(words, keyword_dict):
+    score = 0
+    for word in words:
+        if word in keyword_dict:
+            score += keyword_dict[word]
+    return score
+
+
+# PROCESS SINGLE REVIEW (FOR THREADING)
+
+def process_review(row):
+
+    if "reviews.text" not in row:
+        return None
+
+    text = row["reviews.text"]
+    words = preprocess_text(text)
+
+    quality_score = calculate_score(words, quality_keywords)
+    price_score = calculate_score(words, price_keywords)
+    delivery_score = calculate_score(words, delivery_keywords)
+    packaging_score = calculate_score(words, packaging_keywords)
+    performance_score = calculate_score(words, performance_keywords)
+
+    total_score = (
+        quality_score +
+        price_score +
+        delivery_score +
+        packaging_score +
+        performance_score
+    )
+
+    quality_status = "Yes" if quality_score > 0 else "No"
+    price_status = "Yes" if price_score > 0 else "No"
+    delivery_status = "Yes" if delivery_score > 0 else "No"
+    packaging_status = "Yes" if packaging_score > 0 else "No"
+    performance_status = "Yes" if performance_score > 0 else "No"
+
+    if total_score > 0:
+        overall_sentiment = "Positive"
+    elif total_score < 0:
+        overall_sentiment = "Negative"
+    else:
+        overall_sentiment = "Neutral"
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return (
+        text,
+        quality_status,
+        price_status,
+        delivery_status,
+        packaging_status,
+        performance_status,
+        total_score,
+        overall_sentiment,
+        timestamp
+    )
+
+
+
 # LOAD CSV
+
+
 try:
     with open("amazon-product-reviews.csv", "r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
@@ -48,7 +131,11 @@ except FileNotFoundError:
     print("CSV file not found.")
     exit()
 
+
+
 # DATABASE
+
+
 conn = sqlite3.connect("amazon_aspect_sentiment.db")
 cursor = conn.cursor()
 
@@ -67,56 +154,196 @@ CREATE TABLE IF NOT EXISTS results (
 )
 """)
 
-for row in reviews[:500]:
+conn.commit()
 
-    text = row["reviews.text"].lower()
 
-    quality_score = 0
-    price_score = 0
-    delivery_score = 0
-    packaging_score = 0
-    performance_score = 0
 
-    for word, value in quality_keywords.items():
-        quality_score += text.count(word) * value
+# MULTI-TASKING (THREAD POOL)
 
-    for word, value in price_keywords.items():
-        price_score += text.count(word) * value
 
-    for word, value in delivery_keywords.items():
-        delivery_score += text.count(word) * value
+with ThreadPoolExecutor(max_workers=5) as executor:
+    results = executor.map(process_review, reviews[:500])
 
-    for word, value in packaging_keywords.items():
-        packaging_score += text.count(word) * value
-
-    for word, value in performance_keywords.items():
-        performance_score += text.count(word) * value
-
-    quality_status = "Yes" if quality_score > 0 else "No"
-    price_status = "Yes" if price_score > 0 else "No"
-    delivery_status = "Yes" if delivery_score > 0 else "No"
-    packaging_status = "Yes" if packaging_score > 0 else "No"
-    performance_status = "Yes" if performance_score > 0 else "No"
-
-    total_score = quality_score + price_score + delivery_score + packaging_score + performance_score
-
-    if total_score > 0:
-        overall_sentiment = "Positive"
-    elif total_score < 0:
-        overall_sentiment = "Negative"
-    else:
-        overall_sentiment = "Neutral"
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    cursor.execute("""
-    INSERT INTO results 
-    (text, quality_status, price_status, delivery_status, packaging_status, performance_status, total_score, overall_sentiment, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-    (text, quality_status, price_status, delivery_status, packaging_status, performance_status, total_score, overall_sentiment, timestamp))
+    for result in results:
+        if result is not None:
+            cursor.execute("""
+            INSERT INTO results 
+            (text, quality_status, price_status, delivery_status, packaging_status, performance_status, total_score, overall_sentiment, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, result)
 
 conn.commit()
 conn.close()
 
+
+# END TIMER
+
+
+end_time = time.time()
+total_time = end_time - start_time
+
 print("Amazon Aspect Sentiment Processing Completed")
+print("Total Execution Time:", round(total_time, 2), "seconds")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# SINGLE TASKING
+
+# import csv
+# import sqlite3
+# from datetime import datetime
+
+# # ASPECT KEYWORDS
+
+# quality_keywords = {
+#     "good quality": 2,
+#     "excellent": 2,
+#     "durable": 2,
+#     "cheap quality": -2,
+#     "poor quality": -2
+# }
+
+# price_keywords = {
+#     "worth": 2,
+#     "affordable": 2,
+#     "expensive": -1,
+#     "overpriced": -2
+# }
+
+# delivery_keywords = {
+#     "fast delivery": 2,
+#     "on time": 2,
+#     "late": -1,
+#     "delayed": -2
+# }
+
+# packaging_keywords = {
+#     "well packed": 2,
+#     "damaged": -2,
+#     "broken": -2
+# }
+
+# performance_keywords = {
+#     "works perfectly": 2,
+#     "smooth": 2,
+#     "slow": -1,
+#     "not working": -2
+# }
+
+# # LOAD CSV
+# try:
+#     with open("amazon-product-reviews.csv", "r", encoding="utf-8") as file:
+#         reader = csv.DictReader(file)
+#         reviews = list(reader)
+# except FileNotFoundError:
+#     print("CSV file not found.")
+#     exit()
+
+# # DATABASE
+# conn = sqlite3.connect("amazon_aspect_sentiment.db")
+# cursor = conn.cursor()
+
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS results (
+#     id INTEGER PRIMARY KEY AUTOINCREMENT,
+#     text TEXT,
+#     quality_status TEXT,
+#     price_status TEXT,
+#     delivery_status TEXT,
+#     packaging_status TEXT,
+#     performance_status TEXT,
+#     total_score REAL,
+#     overall_sentiment TEXT,
+#     timestamp TEXT
+# )
+# """)
+
+# for row in reviews[:500]:
+
+#     text = row["reviews.text"].lower()
+
+#     quality_score = 0
+#     price_score = 0
+#     delivery_score = 0
+#     packaging_score = 0
+#     performance_score = 0
+
+#     for word, value in quality_keywords.items():
+#         quality_score += text.count(word) * value
+
+#     for word, value in price_keywords.items():
+#         price_score += text.count(word) * value
+
+#     for word, value in delivery_keywords.items():
+#         delivery_score += text.count(word) * value
+
+#     for word, value in packaging_keywords.items():
+#         packaging_score += text.count(word) * value
+
+#     for word, value in performance_keywords.items():
+#         performance_score += text.count(word) * value
+
+#     quality_status = "Yes" if quality_score > 0 else "No"
+#     price_status = "Yes" if price_score > 0 else "No"
+#     delivery_status = "Yes" if delivery_score > 0 else "No"
+#     packaging_status = "Yes" if packaging_score > 0 else "No"
+#     performance_status = "Yes" if performance_score > 0 else "No"
+
+#     total_score = quality_score + price_score + delivery_score + packaging_score + performance_score
+
+#     if total_score > 0:
+#         overall_sentiment = "Positive"
+#     elif total_score < 0:
+#         overall_sentiment = "Negative"
+#     else:
+#         overall_sentiment = "Neutral"
+
+#     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+#     cursor.execute("""
+#     INSERT INTO results 
+#     (text, quality_status, price_status, delivery_status, packaging_status, performance_status, total_score, overall_sentiment, timestamp)
+#     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+#     """,
+#     (text, quality_status, price_status, delivery_status, packaging_status, performance_status, total_score, overall_sentiment, timestamp))
+
+# conn.commit()
+# conn.close()
+
+# print("Amazon Aspect Sentiment Processing Completed")

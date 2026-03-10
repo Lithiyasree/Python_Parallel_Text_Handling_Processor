@@ -22,7 +22,8 @@ def export_pdf(
     plt.pie(
         [positive, negative, neutral],
         labels=["Positive","Negative","Neutral"],
-        autopct="%1.0f%%"
+        autopct="%1.0f%%",
+        colors=["#10F759", "#EF4444", "#6E08EA"]
     )
     plt.title("Sentiment Distribution")
     plt.savefig(pie_path)
@@ -34,8 +35,8 @@ def export_pdf(
     if "score" in df.columns:
 
         plt.figure()
-        plt.hist(df["score"], bins=10)
-        plt.title("Score Histogram")
+        plt.hist(df["score"], bins=10, color="#3B82F6", edgecolor="white")
+        plt.title("Score Distribution")
         plt.xlabel("Score")
         plt.ylabel("Frequency")
         plt.savefig(hist_path)

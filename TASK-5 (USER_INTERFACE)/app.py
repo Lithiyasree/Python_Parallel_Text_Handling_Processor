@@ -461,28 +461,43 @@ if menu == "Search":
 
 if menu == "Email Report":
 
-    df = get_data()
-
-    if not df.empty:
-
         recipient = st.text_input("Recipient Email")
 
         if st.button("Generate & Send Report"):
 
+            if not recipient:
+                st.warning("Please enter a recipient email.")
+                st.stop()
+
             os.makedirs("report", exist_ok=True)
 
-            # Save CSV
-            csv_path = "report/view_records_report.csv"
-            df.to_csv(csv_path, index=False)
+            # CSV
+            conn = get_connection()
+            df_full = pd.read_sql_query("SELECT * FROM chunks", conn)
+            conn.close()
 
-            # Get Overview Metrics (same as Overview page)
+            if df_full.empty:
+                st.warning("No records available.")
+                st.stop()
+
+            max_csv_rows = 20000
+            if len(df_full) > max_csv_rows:
+                st.warning("CSV too large. Sending only first 10,000 rows.")
+                df_csv = df_full.head(max_csv_rows)
+            else:
+                df_csv = df_full
+
+            csv_path = "report/view_records_report.csv"
+            df_csv.to_csv(csv_path, index=False)
+
+            # PDF
             total_chunks, avg_score, unique_uids, top_rule, positive, negative, neutral = get_overview_metrics()
             total_csv_records = get_total_csv_records()
-
-            # Generate PDF using SAME metrics
+            data = get_data()
+            
             pdf_path = export_pdf(
-                df,
-                total_csv_records,
+                data,                
+                total_csv_records, 
                 total_chunks,
                 avg_score,
                 unique_uids,
@@ -493,24 +508,21 @@ if menu == "Email Report":
 
             # Email body
             body = f"""
-Parallel Text Processing Report
+    Parallel Text Processing Report
 
-Total CSV Records: {total_csv_records}
-Chunks Stored: {total_chunks}
-Average Score: {avg_score}
-Unique UIDs: {unique_uids}
-Top Rule: {top_rule}
+    Total CSV Records: {total_csv_records}
+    Chunks Stored: {total_chunks}
+    Average Score: {avg_score}
+    Unique UIDs: {unique_uids}
+    Top Rule: {top_rule}
 
-Sentiment Counts:
-Positive: {positive}
-Negative: {negative}
-Neutral: {neutral}
+    Sentiment Counts:
+    Positive: {positive}
+    Negative: {negative}
+    Neutral: {neutral}
+    """
 
-Attachments:
-- PDF Report
-- CSV Data
-"""
-
+            # Send Email 
             send_email(
                 recipient,
                 "Parallel Text Processing Report",
@@ -518,8 +530,8 @@ Attachments:
                 attachments=[pdf_path, csv_path]
             )
 
-            st.success("Report Sent Successfully ✅")
-            
+            st.success("✅ Report Sent Successfully with CSV & PDF")
+
 
 # ---------------- CLEAR RECORDS ----------------
 if menu == "Clear Data":

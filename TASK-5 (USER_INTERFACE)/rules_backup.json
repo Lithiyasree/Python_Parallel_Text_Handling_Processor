@@ -1,0 +1,9 @@
+{
+  "excellent": 1,
+  "amazing": 1,
+  "good": 0.5,
+  "nice": 0.5,
+  "bad": -0.5,
+  "poor": -1,
+  "well":1.5
+}
